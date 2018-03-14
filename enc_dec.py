@@ -276,11 +276,14 @@ class EncoderDecoder(Chain):
                 # multiply by alpha array
                 # where is alpha array updated?
                 # check this
-                alignment = F.softmax(F.matmul(self[self.lstm_dec[-1]].h,enc_states.T))
+                alignment = F.softmax(F.matmul(self[self.lstm_dec[-1]].h.data[0], enc_states.data, transa=True, transb=True))
                 
-                h_bar = F.tanh(self.attention(alignment))
+                c_t = F.matmul(enc_states.data,alignment)
+                
+                h_bar = F.tanh(self.attention([self.lstm_dec[-1]].h + c_t))
                 
                 predicted_out = self.out(h_bar)
+                
 
             # compute loss
             prob = F.softmax(predicted_out)
@@ -325,9 +328,12 @@ class EncoderDecoder(Chain):
             else:
                 # __QUESTION Add attention
                 # check this
-                alignment = F.softmax(F.matmul([self.lstm_dec[-1]].h,enc_states))
+                alignment = F.softmax(F.matmul([self.lstm_dec[-1]].h,enc_states, transa=True, transb=True))
                 
-                h_bar = F.tanh(self.attention(alignment))
+                c_t = F.matmul(enc_states,alignment)
+                print(c_t.shape)
+                
+                h_bar = F.tanh(self.attention([self.lstm_dec[-1]].h + c_t))
                 
                 predicted_out = self.out(h_bar)
                 
