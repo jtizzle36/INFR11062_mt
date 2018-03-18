@@ -100,8 +100,8 @@ class EncoderDecoder(Chain):
         if attn > 0:
             # __QUESTION Add attention
             # here we just add the chain object of the right size
-            # what size should this be!? in: 4*n_units!? out: 2*n_units?
-            self.add_link("attention", L.Linear(vsize_dec, 2*n_units))
+            # what size should this be!? out: 2*n_units?
+            self.add_link("attention", L.Linear(4*n_units, 4*n_units))
 
         # Save the attention preference
         # __QUESTION you should use this flag to check if attention
@@ -109,7 +109,10 @@ class EncoderDecoder(Chain):
         self.attn = attn
 
         # add output layer
-        self.add_link("out", L.Linear(2*n_units, vsize_dec))
+        if attn > 0:
+            self.add_link("out", L.Linear(4*n_units, vsize_dec))  
+        else:
+            self.add_link("out", L.Linear(2*n_units, vsize_dec))
         '''
         ___QUESTION-1-DESCRIBE-B-END___
         '''
@@ -149,7 +152,7 @@ class EncoderDecoder(Chain):
     '''
     def feed_lstm(self, word, embed_layer, lstm_layer_list, train):
         
-        dropout_ratio = 0.2
+        dropout_ratio = 0.5
         
         chainer.using_config.train = train
         # get embedding for word
@@ -276,13 +279,15 @@ class EncoderDecoder(Chain):
                 # multiply by alpha array
                 # where is alpha array updated?
                 # check this
-                alignment = F.softmax(F.matmul(self[self.lstm_dec[-1]].h.data[0], enc_states.data, transa=True, transb=True))
+                alignment = F.softmax(F.matmul(self[self.lstm_dec[-1]].h, enc_states, transb=True))
                 
-                c_t = F.matmul(enc_states.data,alignment)
+                c_t = F.matmul(alignment,enc_states)
                 
-                h_bar = F.tanh(self.attention([self.lstm_dec[-1]].h + c_t))
+                h_bar = F.tanh(self.attention(F.concat((self[self.lstm_dec[-1]].h, c_t), axis=1)))
                 
                 predicted_out = self.out(h_bar)
+                
+                
                 
 
             # compute loss
@@ -308,9 +313,8 @@ class EncoderDecoder(Chain):
 
         # __QUESTION -- Following code is to assist with ATTENTION
         # alpha_arr should store the alphas for every predicted word
-        #alpha_arr = xp.empty((0,enc_states.shape[0]), dtype=xp.float32)
+        alpha_arr = xp.empty((0,enc_states.shape[0]), dtype=xp.float32)
         # check this
-        alpha_arr = self.attention.W
         
         # return list of predicted words
         predicted_sent = []
@@ -328,16 +332,21 @@ class EncoderDecoder(Chain):
             else:
                 # __QUESTION Add attention
                 # check this
-                alignment = F.softmax(F.matmul([self.lstm_dec[-1]].h,enc_states, transa=True, transb=True))
+                alignment = F.softmax(F.matmul(self[self.lstm_dec[-1]].h, enc_states, transb=True))
                 
-                c_t = F.matmul(enc_states,alignment)
-                print(c_t.shape)
+                c_t = F.matmul(alignment,enc_states)
                 
-                h_bar = F.tanh(self.attention([self.lstm_dec[-1]].h + c_t))
+                h_bar = F.tanh(self.attention(F.concat((self[self.lstm_dec[-1]].h, c_t), axis=1)))
                 
                 predicted_out = self.out(h_bar)
                 
                 prob = F.softmax(predicted_out)
+                
+                if pred_count == 0:
+                    alpha_arr = alignment.array
+                    
+                else:
+                    alpha_arr = xp.concatenate((alpha_arr, alignment.array), axis = 0)
 
 
             pred_word = self.select_word(prob, train=False, sample=sample)
